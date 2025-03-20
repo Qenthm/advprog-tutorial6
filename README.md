@@ -127,3 +127,53 @@ When accessing the server now:
 - The browser correctly displays different content based on the request path
 
 This implementation follows proper HTTP protocol by returning appropriate status codes and content based on the requested resources.
+
+## Commit 4 Reflection Notes
+
+In this commit, I simulated a slow request to demonstrate the limitations of a single-threaded web server.
+
+![Commit 4 screen capture](/assets/images/commit4.png)
+
+### What Was Implemented
+
+I added a new route, `/sleep`, which artificially delays the response by sleeping for 10 seconds before returning the same content as the home page:
+
+```rust
+"GET /sleep HTTP/1.1" => {
+    thread::sleep(Duration::from_secs(10));
+    ("HTTP/1.1 200 OK", "hello.html")
+}
+```
+
+### Single-Threaded Server Limitations
+
+This test revealed a critical limitation of single-threaded servers:
+
+1. **Blocking Behavior**: When I opened two browser windows and accessed the `/sleep` route in one of them, the entire server was blocked for 10 seconds.
+
+2. **Request Queuing**: While the first request was processing (sleeping), the second request to the home page (`/`) had to wait in the queue even though it could have been processed immediately.
+
+3. **Poor Scalability**: This test simulates what would happen under heavier load - even simple requests get delayed when the server is handling slower requests.
+
+### Technical Analysis
+
+The root cause of this behavior is in the server's main loop:
+
+```rust
+for stream in listener.incoming() {
+    let stream = stream.unwrap();
+    handle_connection(stream);
+}
+```
+
+This code processes each connection sequentially. The server only begins handling the next connection after the current one is completely finished. When handling the `/sleep` route, the thread is blocked for 10 seconds, during which it cannot accept or process any other requests.
+
+### Real-World Implications
+
+In a production environment, this limitation would cause:
+
+1. **Poor User Experience**: Users would experience seemingly random delays.
+2. **Reduced Throughput**: The server would handle fewer requests per second than it's capable of.
+3. **Vulnerability to Denial of Service**: Slow requests (either malicious or legitimate) could effectively make the server unresponsive.
+
+This experiment clearly demonstrates why production web servers use multi-threading or async I/O to handle multiple requests concurrently.
