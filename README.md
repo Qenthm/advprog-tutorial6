@@ -252,3 +252,86 @@ Instead of handling each connection directly in the main thread, we now submit t
 ### Conclusion
 
 This multi-threaded implementation significantly improves the server's performance, scalability, and responsiveness. It can now handle multiple concurrent requests efficiently, which is essential for any production-grade web server. The thread pool approach also provides better resource management compared to creating a new thread for each connection.
+
+## Commit Bonus Reflection Notes
+
+In this bonus commit, I implemented an alternative constructor for the ThreadPool using the builder pattern and compared it with the original implementation.
+
+![Bonus screen capture](/assets/images/bonus.png)
+
+### Implementation: `build()` vs `new()`
+
+I added a `build()` method to the ThreadPool struct as an alternative to the existing `new()` constructor:
+
+```rust
+pub fn build(size: usize) -> Result<ThreadPool, &'static str> {
+    if size == 0 {
+        return Err("ThreadPool size cannot be zero");
+    }
+
+    let (sender, receiver) = mpsc::channel();
+    let receiver = Arc::new(Mutex::new(receiver));
+    let mut workers = Vec::with_capacity(size);
+
+    for id in 0..size {
+        workers.push(Worker::new(id, Arc::clone(&receiver)));
+    }
+
+    Ok(ThreadPool {
+        workers,
+        sender: Some(sender),
+    })
+}
+```
+
+### Comparison Between Approaches
+
+#### 1. Error Handling
+
+- **new()**: Uses `assert!()` to panic if size is zero
+  ```rust
+  assert!(size > 0);
+  ```
+
+- **build()**: Returns a `Result` type to handle errors gracefully
+  ```rust
+  if size == 0 {
+      return Err("ThreadPool size cannot be zero");
+  }
+  ```
+
+#### 2. API Ergonomics
+
+- **new()**: Simple usage but with panic risk
+  ```rust
+  let pool = ThreadPool::new(4);
+  ```
+
+- **build()**: Requires error handling but safer
+  ```rust
+  let pool = ThreadPool::build(4).unwrap_or_else(|err| {
+      eprintln!("Failed to build ThreadPool: {}", err);
+      std::process::exit(1);
+  });
+  ```
+
+#### 3. Following Rust Conventions
+
+- **new()**: Follows Rust's convention where `new()` is an infallible constructor
+- **build()**: Follows the builder pattern, which is more appropriate when construction might fail
+
+### Benefits of the Builder Pattern
+
+1. **Explicit Error Handling**: Forces the caller to consider error cases
+2. **No Unexpected Panics**: Better in production code where panicking is undesirable
+3. **Flexible Configuration**: Could be extended to support additional options (e.g., thread names, priorities)
+4. **More Idiomatic**: Aligns with Rust's preference for explicit error handling
+
+### When to Use Each Approach
+
+- **Use new()**: For simple cases where failure is considered a programming error
+- **Use build()**: For user-provided inputs or when graceful error handling is needed
+
+### Conclusion
+
+This exercise demonstrates the importance of API design in library code. While both approaches create the same ThreadPool, they offer different trade-offs in terms of safety, ergonomics, and error handling. By providing both options, we give users the flexibility to choose the approach that best suits their needs.
