@@ -132,8 +132,6 @@ This implementation follows proper HTTP protocol by returning appropriate status
 
 In this commit, I simulated a slow request to demonstrate the limitations of a single-threaded web server.
 
-![Commit 4 screen capture](/assets/images/commit4.png)
-
 ### What Was Implemented
 
 I added a new route, `/sleep`, which artificially delays the response by sleeping for 10 seconds before returning the same content as the home page:
@@ -177,3 +175,80 @@ In a production environment, this limitation would cause:
 3. **Vulnerability to Denial of Service**: Slow requests (either malicious or legitimate) could effectively make the server unresponsive.
 
 This experiment clearly demonstrates why production web servers use multi-threading or async I/O to handle multiple requests concurrently.
+
+## Commit 5 Reflection Notes
+
+In this commit, I transformed the server from a single-threaded to a multi-threaded architecture using a ThreadPool implementation.
+
+### Multi-threading with Thread Pools
+
+I implemented a `ThreadPool` struct that manages a pool of worker threads. This approach:
+
+1. **Creates a fixed number of threads** (4 in this implementation) at server startup
+2. **Distributes incoming requests** across these worker threads
+3. **Enables parallel processing** of multiple requests
+4. **Reuses threads** rather than creating/destroying them for each request
+
+### Key Components of the Implementation
+
+1. **ThreadPool Structure**: Manages workers and communication channels:
+   ```rust
+   pub struct ThreadPool {
+       workers: Vec<Worker>,
+       sender: mpsc::Sender<Job>,
+   }
+   ```
+
+2. **Workers**: Each maintains a thread that processes jobs:
+   ```rust
+   struct Worker {
+       id: usize,
+       thread: Option<thread::JoinHandle<()>>,
+   }
+   ```
+
+3. **Job Type**: Represents a task to be executed by a worker:
+   ```rust
+   type Job = Box<dyn FnOnce() + Send + 'static>;
+   ```
+
+4. **Message Passing**: Uses channels to safely distribute jobs:
+   ```rust
+   let (sender, receiver) = mpsc::channel();
+   let receiver = Arc::new(Mutex::new(receiver));
+   ```
+
+### Performance Improvements
+
+With this implementation, when accessing the `/sleep` endpoint in one browser and the regular homepage in another:
+
+1. **Non-blocking Behavior**: The slow request no longer blocks the entire server
+2. **Parallel Processing**: Multiple requests are handled simultaneously
+3. **Improved Responsiveness**: Fast requests complete quickly even while slow requests are processing
+4. **Better Resource Utilization**: All CPU cores can be utilized
+
+### Technical Analysis
+
+The key change is in how connections are processed:
+
+```rust
+// Before: Sequential processing
+for stream in listener.incoming() {
+    let stream = stream.unwrap();
+    handle_connection(stream);
+}
+
+// After: Parallel processing with thread pool
+for stream in listener.incoming() {
+    let stream = stream.unwrap();
+    pool.execute(|| {
+        handle_connection(stream);
+    });
+}
+```
+
+Instead of handling each connection directly in the main thread, we now submit the connection handling as a job to the thread pool, which dispatches it to an available worker thread.
+
+### Conclusion
+
+This multi-threaded implementation significantly improves the server's performance, scalability, and responsiveness. It can now handle multiple concurrent requests efficiently, which is essential for any production-grade web server. The thread pool approach also provides better resource management compared to creating a new thread for each connection.
