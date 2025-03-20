@@ -29,9 +29,47 @@ The server implementation:
 
 Currently, the server receives the requests correctly but doesn't send any response back to the client. This explains why the browser continues to make repeated requests - it's waiting for a response that never comes.
 
-### Next Steps
+## Commit 2 Reflection Notes
 
-In the next commit, I'll implement:
-1. Proper HTTP response generation
-2. Handling different routes
-3. Serving actual content back to the client
+In this commit, I upgraded the server to return actual HTML content to the browser, creating a complete request-response cycle.
+
+![Commit 2 screen capture](/assets/images/commit2.png)
+
+### Improvements Made
+
+1. **HTML Response Generation**: The server now constructs a proper HTTP response with:
+   - A status line `HTTP/1.1 200 OK`
+   - Content-Length header with the appropriate length
+   - The HTML content read from a local file (hello.html)
+
+2. **Complete HTTP Flow**: Instead of just receiving and printing requests, the server now:
+   - Reads the incoming HTTP request
+   - Processes it (currently in a basic way)
+   - Generates an appropriate response
+   - Sends the response back to the client
+
+### Technical Details
+
+The key addition is the response formatting and sending:
+```rust
+let status_line = "HTTP/1.1 200 OK";
+let contents = fs::read_to_string("hello.html").unwrap();
+let length = contents.len();
+
+let response = format!(
+    "{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}"
+);
+
+stream.write_all(response.as_bytes()).unwrap();
+```
+
+This code:
+1. Creates the HTTP status line
+2. Reads the HTML content from a file
+3. Calculates the content length
+4. Formats these components into a valid HTTP response with proper headers
+5. Writes the response back to the TCP stream
+
+### Observations
+
+When accessing the server now, the browser successfully receives and renders the HTML content. This is a significant improvement from the previous version where the browser would just wait indefinitely for a response.
